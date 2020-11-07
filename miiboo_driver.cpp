@@ -143,9 +143,18 @@ class miiboo_driver
             close(SerialCom);
         }
 
-        void move()
+        void move(unsigned char *cmd)
         {
-            write_to_motor();
+            if(cmd[0] == 'f')
+                write_to_motor(15, 15);
+            if(cmd[0] == 'b')
+                write_to_motor(-15, -15);
+            if(cmd[0] == 'r')
+                write_to_motor(15, -15);
+            if(cmd[0] == 'l')
+                write_to_motor(-15, 15);
+            if(cmd[0] == 's')
+                write_to_motor(0, 0);
         }
 
     private:
@@ -235,13 +244,14 @@ class miiboo_driver
                     //debug
                     printf("\n TX:");
                     for(int i=0; i<10; ++i)
-                        printf("%02x", writebuff[i]);
+                        printf("%02x,", writebuff[i]);
                     send_update_flag=0; //clear flag
                     i=0; //clear stop count
                 }
-                else if(i==1000) //if not input cmd_vel during 0.5s, stop motor
+                else if(i==150) //if not input cmd_vel during 1.5s, stop motor
                 {
                     //stop
+                    printf("\n\nEmergency Stop\n\n");
                     nwrite=write(SerialCom,(const void *)&stopbuff,11);
                     i = 0;
                 }
@@ -251,13 +261,43 @@ class miiboo_driver
             }
         }
 
-        void write_to_motor()
+        void write_to_motor(int32_t left, int32_t right)
         {
             unsigned char check_sum=0;
+            unsigned char lsign, rsign;
 
             if( send_update_flag == 0 )
             {
-                writebuff = {0xff, 0xff, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x0f, 0x00};
+                // Init 
+                lsign = 0;
+                rsign = 0;
+                // Header
+                writebuff[0] = 0xff;
+                writebuff[1] = 0xff;
+
+                // Left
+                if( left < 0 )
+                {
+                    lsign = 1;
+                    left = -1 * left;
+                }
+                writebuff[2] = lsign;
+                writebuff[3] = ((left>>16)&0xff);
+                writebuff[4] = ((left>>8)&0xff);
+                writebuff[5] = (left&0xff);
+
+                // Right
+                if( right < 0 )
+                {
+                    rsign = 1;
+                    right = -1 * right;
+                }
+                writebuff[6] = rsign;
+                writebuff[7] = ((right>>16)&0xff);
+                writebuff[8] = ((right>>8)&0xff);
+                writebuff[9] = (right&0xff);
+
+                // Checksum
                 for(int i=0;i<10;i++)
                     check_sum+=writebuff[i];
                 writebuff[10] = check_sum;
@@ -285,9 +325,31 @@ int main(int argc, char **argv)
 
     printf("Insert your code here\n");
 
-    miiboo_object->move();
-
-    sleep(20);
+    for(int i=0; i<5; ++i)
+    {
+        miiboo_object->move((unsigned char *)"f");
+        sleep(1);
+    }
+    for(int i=0; i<5; ++i)
+    {
+        miiboo_object->move((unsigned char *)"r");
+        sleep(1);
+    }
+    for(int i=0; i<5; ++i)
+    {
+        miiboo_object->move((unsigned char *)"b");
+        sleep(1);
+    }
+    for(int i=0; i<5; ++i)
+    {
+        miiboo_object->move((unsigned char *)"l");
+        sleep(1);
+    }
+    for(int i=0; i<5; ++i)
+    {
+        miiboo_object->move((unsigned char *)"s");
+        sleep(1);
+    }
 
     delete miiboo_object;
 } // main()

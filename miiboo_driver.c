@@ -4,6 +4,19 @@ Based on the miiboo ROS driver from Hiram Zhang.
 https://files.cnblogs.com/files/hiram-zhang/miiboo_bringup.zip
 gcc miiboo_driver.c -lpthread
 
+Building the shared library
+gcc -c -Wall -Werror -fpic miiboo_driver.c
+gcc -shared -o libmiiboo.so miiboo_driver.o
+
+Linking with the shared library
+gcc -Wall -o test test_so.c -lmiiboo -lpthread -L./
+
+Running
+export LD_LIBRARY_PATH=/Development/miiboo_controller
+sudo chmod 777 /dev/ttyUSB0
+./test /dev/ttyUSB0
+
+/*******************************************************************
 ###serial-com interface (USB-DATA)：
 1.send to serial-com
 (1)bps: 115200
@@ -166,6 +179,7 @@ int Read(char *result)
     pthread_mutex_lock (&miiboo_data.rx_data_lock);
     sprintf(result, "left:%d right:%d", miiboo_data.left_distance, miiboo_data.right_distance);
     pthread_mutex_unlock (&miiboo_data.rx_data_lock);
+    return 0;
 }
 
 // Close motor controller
@@ -286,11 +300,11 @@ static void *myreadframe_thread(void)
 
 
 
-
+#if 0
 // Testing the driver
 int main(int argc, char **argv)
 {
-    unsigned char cmd[] = {'f', 'r', 'b', 'l', 's', 0};
+    char cmd[] = {'f', 'r', 'b', 'l', 's', 0};
     char data[32];
 
     // Verify command line
@@ -332,3 +346,4 @@ int main(int argc, char **argv)
 done:
     Close();
 } // main()
+#endif

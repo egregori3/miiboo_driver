@@ -16,7 +16,7 @@ export LD_LIBRARY_PATH=/Development/miiboo_controller
 sudo chmod 777 /dev/ttyUSB0
 ./test /dev/ttyUSB0
 
-/*******************************************************************
+********************************************************************
 ###serial-com interface (USB-DATA)：
 1.send to serial-com
 (1)bps: 115200

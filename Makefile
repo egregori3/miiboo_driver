@@ -9,15 +9,13 @@
 
 IDIR=./
 CC=gcc
-CLAGS=-Wall -Werror
+CFLAGS=-Wall -Werror
 
+SLIBS=-lpthread
 SODIR=sobj
-SLDIR =./
 SOLIB=libmiiboo.so
 
-ODIR=obj
-LDIR=./
-LIBS=-lpthread -lmiiboo
+LIBS=-lmiiboo
 
 
 # Shared Library
@@ -25,32 +23,29 @@ _SDEPS = miiboo_driver.h
 SDEPS = $(patsubst %,$(IDIR)/%,$(_SDEPS))
 
 _SOBJ = miiboo_driver.o
-_SOBJ = $(patsubst %,$(SODIR)/%,$(_SOBJ))
+SOBJ = $(patsubst %,$(SODIR)/%,$(_SOBJ))
 
 # Test application
 _OBJ = test_so.o
-_OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
+OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 # Build shared library
 $(SODIR)/%.o: %.c $(SDEPS)
 	$(CC) -c -o $@ $< $(CFLAGS) -fpic
 
-miiboo_driver: $(OBJ)
-	$(CC) -shared -o $(SOLIB) $^ $(CFLAGS) $(LIBS)
+$(SOLIB): $(SOBJ)
+	$(CC) -shared -o $(SOLIB) $^ $(CFLAGS)
 
 # Build test application
-$(ODIR)/%.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS) -fpic
-
-test_so: $(OBJ)
-	$(CC) -shared -o $(SOLIB) $^ $(CFLAGS) $(LIBS)
+test_so:
+	$(CC) -o $@ test_so.c $(LIBS) $(SLIBS) -L./
+export LD_LIBRARY_PATH=/Development/miiboo_controller
 
 
 .PHONY: clean
 
 clean:
-	rm -f $(ODIR)/*.o
 	rm -f $(SODIR)/*.o
 	rm $(SOLIB)
-
+	rm test_so
 

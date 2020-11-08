@@ -6,11 +6,7 @@
 // gcc -Wall -o test test_so.c -lmiiboo -lpthread -L./
 #include <unistd.h>
 #include <stdio.h>
-
-extern int Close(void);
-extern int Read(char *result);
-extern int Write(char *cmd);
-extern int Open( char *COMName);
+#include "miiboo_driver.h"
 
 
 // Testing the driver

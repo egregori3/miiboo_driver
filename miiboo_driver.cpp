@@ -269,8 +269,8 @@ class miiboo_driver
             if( send_update_flag == 0 )
             {
                 // Init 
-                lsign = 0;
-                rsign = 0;
+                lsign = 1;
+                rsign = 1;
                 // Header
                 writebuff[0] = 0xff;
                 writebuff[1] = 0xff;
@@ -278,7 +278,7 @@ class miiboo_driver
                 // Left
                 if( left < 0 )
                 {
-                    lsign = 1;
+                    lsign = 0;
                     left = -1 * left;
                 }
                 writebuff[2] = lsign;
@@ -289,7 +289,7 @@ class miiboo_driver
                 // Right
                 if( right < 0 )
                 {
-                    rsign = 1;
+                    rsign = 0;
                     right = -1 * right;
                 }
                 writebuff[6] = rsign;
@@ -325,29 +325,14 @@ int main(int argc, char **argv)
 
     printf("Insert your code here\n");
 
-    for(int i=0; i<5; ++i)
+    for(int i=0; i<15; ++i)
     {
         miiboo_object->move((unsigned char *)"f");
         sleep(1);
     }
-    for(int i=0; i<5; ++i)
+    for(int i=0; i<15; ++i)
     {
-        miiboo_object->move((unsigned char *)"r");
-        sleep(1);
-    }
-    for(int i=0; i<5; ++i)
-    {
-        miiboo_object->move((unsigned char *)"b");
-        sleep(1);
-    }
-    for(int i=0; i<5; ++i)
-    {
-        miiboo_object->move((unsigned char *)"l");
-        sleep(1);
-    }
-    for(int i=0; i<5; ++i)
-    {
-        miiboo_object->move((unsigned char *)"s");
+        miiboo_object->move((unsigned char *)"f");
         sleep(1);
     }
 

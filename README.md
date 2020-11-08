@@ -1,4 +1,7 @@
 # miiboo_driver
 
-g++ miiboo_driver.cpp -lm -lpthread -std=c++11
+python build_cffi.py
 
+this will build cffi_miiboo.py
+
+import cffi_miiboo.pyinto your Python code.

@@ -2,7 +2,7 @@
 
 Based on the miiboo ROS driver from Hiram Zhang.
 https://files.cnblogs.com/files/hiram-zhang/miiboo_bringup.zip
-gcc miiboo_driver.c -lpthread -lm
+gcc miiboo_driver.c -lpthread
 
 ###serial-com interface (USB-DATA)：
 1.send to serial-com
@@ -43,8 +43,6 @@ case3:set pid_params(0x?? 0x?? ... 0x??)
 char printf() one-by-one
 
 *******************************************************************/
-
-//serial com
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -53,86 +51,68 @@ char printf() one-by-one
 #include <fcntl.h>
 #include <termios.h>
 #include <errno.h>
-//multi thread
 #include <pthread.h>
-//cos,sin
-#include <math.h>
 
 
-struct ComDev
+static void *myreadframe_thread();
+static void write_to_motor(int32_t left, int32_t right);
+
+// Driver Data
+typedef struct data
 {
+    // Serial com
     int SerialCom;
-    unsigned char readbuff[11];
     unsigned char insert_buf;
+    // Buffers
+    unsigned char readbuff[11];
     unsigned char writebuff[11];
-    unsigned char stopbuff[11];
-    int nread;
-    int nwrite;
     unsigned char recv_update_flag;
     unsigned char send_update_flag;
-};
+    int32_t       left_distance;
+    int32_t       right_distance;
+    // Thread
+    unsigned char running;
+    pthread_t rx_thread;
+    pthread_mutex_t rx_data_lock;
+} miiboo_driver;
 
-struct BaseSensorData
+static miiboo_driver miiboo_data;
+
+//
+//
+//                   Public API
+//
+//
+
+// Open motor controller
+int Open( char *COMName)
 {
-    int delta_encode_left; 
-    int delta_encode_right; 
-}myBaseSensorData;
+    // Serial com
+    miiboo_data.SerialCom        = 0;
+    miiboo_data.insert_buf       = 0;
+    miiboo_data.recv_update_flag = 0;
+    miiboo_data.send_update_flag = 0;
+    miiboo_data.running          = 1;
 
-struct OdomCaculateData
-{
-    //motor params
-    float speed_ratio; //unit: m/encode
-    float wheel_distance; //unit: m
-    float encode_sampling_time; //unit: s
-    float cmd_vel_linear_max; //unit: m/s
-    float cmd_vel_angular_max; //unit: rad/s
-    //odom result
-    float position_x; //unit: m
-    float position_y; //unit: m
-    float oriention; //unit: rad
-    float velocity_linear; //unit: m/s
-    float velocity_angular; //unit: rad/s
-};
-
-struct ComDev myComDev = {
-    0,
-    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-    '0',
-    {0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-    {0xff, 0xff, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00},
-    0,
-    0,
-    0,
-    0};
-
-struct OdomCaculateData myOdomCaculateData = {
-    0.000176, //unit: m/encode
-    0.1495, //unit: m
-    0.04, //unit: s
-    0.8, //unit: m/s
-    1.0, //unit: rad/s
-    
-    0.0, //unit: m
-    0.0, //unit: m
-    0.0, //unit: rad
-    0.0, //unit: m/s
-    0.0};
-
-void ComSetup(const char *COMName)
-{
-    myComDev.SerialCom = open(COMName, O_RDWR); //set name of serial-com
-    if(myComDev.SerialCom == -1)
+    printf("Opening the comm port: %s\n", COMName);
+    miiboo_data.SerialCom = open(COMName, O_RDWR); //set name of serial-com
+    if(miiboo_data.SerialCom == -1)
     {
         printf("Can't open serial port!\n");
-    }
-    
-    struct termios options;
-    if(tcgetattr(myComDev.SerialCom, &options) != 0)
-    {
-        printf("Can't get serial port sets!\n");
+        return -1;
     }
 
-    tcflush(myComDev.SerialCom, TCIFLUSH);
+    printf("Read the current serial port configuration\n");
+    struct termios options;
+    if(tcgetattr(miiboo_data.SerialCom, &options) != 0)
+    {
+        printf("Can't get serial port sets!\n");
+        return -2;
+    }
+
+    printf("Modify the options required for the hardware\n");
+    // https://blog.mbedded.ninja/programming/operating-systems/linux/linux-serial-ports-using-c-cpp/
+    tcflush(miiboo_data.SerialCom, TCIFLUSH);
     cfsetispeed(&options, B115200);   //set recieve bps of serial-com
     cfsetospeed(&options, B115200);   //set send bps of serial-com
     options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
@@ -141,209 +121,214 @@ void ComSetup(const char *COMName)
     options.c_iflag &= ~(INLCR | ICRNL | IGNCR);
     options.c_oflag &= ~(ONLCR | OCRNL);
 
-    if(tcsetattr(myComDev.SerialCom, TCSANOW, &options) != 0)
+    printf("Update the serial port configuration with the new options\n");
+    if(tcsetattr(miiboo_data.SerialCom, TCSANOW, &options) != 0)
     {
         printf("Can't set serial port options!\n");
+        return -3;
     }
+
+    (void)pthread_create( &miiboo_data.rx_thread, NULL, myreadframe_thread, NULL);
+
+    return 0;
 }
+
+// Write to motor controller
+int Write(char *cmd)
+{
+    switch(cmd[0])
+    {
+        case 'f':
+            write_to_motor(15, 15);
+            return 0;
+        case 'b':
+            write_to_motor(-15, -15);
+            return 0;
+        case 'r':
+            write_to_motor(15, -15);
+            return 0;
+        case 'l':
+            write_to_motor(-15, 15);
+            return 0;
+        case 's':
+            write_to_motor(0, 0);
+            return 0;
+        default:
+            write_to_motor(0, 0);
+    }
+
+    return -1;
+}
+
+// Read encoder data from motor controller
+int Read(char *result)
+{
+    pthread_mutex_lock (&miiboo_data.rx_data_lock);
+    sprintf(result, "left:%d right:%d", miiboo_data.left_distance, miiboo_data.right_distance);
+    pthread_mutex_unlock (&miiboo_data.rx_data_lock);
+}
+
+// Close motor controller
+int Close(void)
+{
+    miiboo_data.running = 0;
+    close(miiboo_data.SerialCom);
+    pthread_join( miiboo_data.rx_thread, NULL);
+    return 0;
+}
+
+
+//
+//
+//                   Static Functions
+//
+//
+static void write_to_motor(int32_t left, int32_t right)
+{
+    unsigned char check_sum=0;
+    unsigned char lsign, rsign;
+
+    // Init 
+    lsign = 1;
+    rsign = 1;
+    // Header
+    miiboo_data.writebuff[0] = 0xff;
+    miiboo_data.writebuff[1] = 0xff;
+
+    // Left
+    if( left < 0 )
+    {
+        lsign = 0;
+        left = -1 * left;
+    }
+    miiboo_data.writebuff[2] = lsign;
+    miiboo_data.writebuff[3] = ((left>>16)&0xff);
+    miiboo_data.writebuff[4] = ((left>>8)&0xff);
+    miiboo_data.writebuff[5] = (left&0xff);
+
+    // Right
+    if( right < 0 )
+    {
+        rsign = 0;
+        right = -1 * right;
+    }
+    miiboo_data.writebuff[6] = rsign;
+    miiboo_data.writebuff[7] = ((right>>16)&0xff);
+    miiboo_data.writebuff[8] = ((right>>8)&0xff);
+    miiboo_data.writebuff[9] = (right&0xff);
+
+    // Checksum
+    for(int i=0;i<10;i++)
+        check_sum+=miiboo_data.writebuff[i];
+    miiboo_data.writebuff[10] = check_sum;
+
+    // Write to serial port
+    write(miiboo_data.SerialCom,(const void *)&miiboo_data.writebuff,11);
+
+    //debug
+    printf("\n TX:");
+    for(int i=0; i<10; ++i)
+        printf("%02x,", miiboo_data.writebuff[i]);
+}
+
 
 //thread: read odom from serial-com
-void *myreadframe_thread(void *pt)
+static void *myreadframe_thread(void)
 {
-    while(1)
-    {   
-        while( (myComDev.nread=read(myComDev.SerialCom,&(myComDev.insert_buf),1))>0 ) //get 1byte by 1byte from serial buffer 
-        {
-            //debug:print recieved data 1byte by 1byte
-            //printf("%x ",myComDev.insert_buf);
-          
-            //FIFO queue cache
-            for(int i=0;i<10;i++)
-            {
-                myComDev.readbuff[i]=myComDev.readbuff[i+1];
-            }
-            myComDev.readbuff[10]=myComDev.insert_buf;
+    int32_t left, right;
 
-            //data analysis
-            if(myComDev.readbuff[0]==0xff && myComDev.readbuff[1]==0xff) //top of frame
-            {
-                //check sum
-                unsigned char check_sum=0;
-                for(int i=0;i<10;i++)
-                  check_sum+=myComDev.readbuff[i];
-                if(check_sum==myComDev.readbuff[10])
-                {                
-                  //debug
-                  //printf("recv:\r\n");
-                  myComDev.recv_update_flag=0;//clear update flag
-                  myBaseSensorData.delta_encode_left=(myComDev.readbuff[2]>0?1:-1)*((myComDev.readbuff[3]<<16)+(myComDev.readbuff[4]<<8)+myComDev.readbuff[5]);
-                  myBaseSensorData.delta_encode_right=(myComDev.readbuff[6]>0?1:-1)*((myComDev.readbuff[7]<<16)+(myComDev.readbuff[8]<<8)+myComDev.readbuff[9]);
-                  printf("[recv from serial-com]delta_encode_left_feedback=%d delta_encode_right_feedback=%d\r\n",myBaseSensorData.delta_encode_left,myBaseSensorData.delta_encode_right);
-                  //###caculate odom###
-                  float delta_d_left;
-                  float delta_d_right;
-                  delta_d_left = (myBaseSensorData.delta_encode_left) * (myOdomCaculateData.speed_ratio);
-                  delta_d_right = (myBaseSensorData.delta_encode_right) * (myOdomCaculateData.speed_ratio);
-                  float delta_d;
-                  float delta_theta;
-                  delta_d = (delta_d_left + delta_d_right) * 0.5; //unit: m
-                  delta_theta = (delta_d_right - delta_d_left) / (myOdomCaculateData.wheel_distance); //theta axis is anti-clockwise,unit: rad
-                  float delta_x;
-                  float delta_y;
-                  delta_x = delta_d * cos(myOdomCaculateData.oriention + delta_theta*0.5);
-                  delta_y = delta_d * sin(myOdomCaculateData.oriention + delta_theta*0.5);
-                  //update odom result
-                  myOdomCaculateData.position_x += delta_x; //unit: m
-                  myOdomCaculateData.position_y += delta_y; //unit: m
-                  myOdomCaculateData.oriention += delta_theta; //unit: rad
-                  myOdomCaculateData.velocity_linear = delta_d / (myOdomCaculateData.encode_sampling_time); //unit: m/s
-                  myOdomCaculateData.velocity_angular = delta_theta / (myOdomCaculateData.encode_sampling_time); //unit: rad/s
-                  //#################
-                  myComDev.recv_update_flag=1; //set update flag   
-                }                
-            }
-        }//while(..) end
-    }//while(1) end
-}
-
-//thread: write cmd_vel to serial-com
-void *mywriteframe_thread(void *pt)
-{
-    int i=0;
-    //control freq: 100hz (10ms)
-    while(1)
+    while( miiboo_data.running && (read(miiboo_data.SerialCom,&(miiboo_data.insert_buf),1)>0) ) //get 1byte by 1byte from serial buffer 
     {
-        //control
-        if(myComDev.send_update_flag==1) //get flag
+        //debug:print recieved data 1byte by 1byte
+        // printf("%02x\n",insert_buf);
+      
+        //FIFO queue cache
+        for(int i=0;i<10;i++)
         {
-            myComDev.nwrite=write(myComDev.SerialCom,myComDev.writebuff,11);
-            //debug
-            //printf("send:%x %x %x %x %x %x\r\n",myComDev.writebuff[0],myComDev.writebuff[1],myComDev.writebuff[2],myComDev.writebuff[3],myComDev.writebuff[4],myComDev.writebuff[5],
-            //                                    myComDev.writebuff[6],myComDev.writebuff[7],myComDev.writebuff[8],myComDev.writebuff[9],myComDev.writebuff[10]);
-            myComDev.send_update_flag=0; //clear flag
-            i=0; //clear stop count
+            miiboo_data.readbuff[i]=miiboo_data.readbuff[i+1];
         }
-        else if(i==50) //if not input cmd_vel during 0.5s, stop motor
+        miiboo_data.readbuff[10]=miiboo_data.insert_buf;
+
+        //data analysis
+        if(miiboo_data.readbuff[0]==0xff && miiboo_data.readbuff[1]==0xff) //top of frame
         {
-            //stop
-            myComDev.nwrite=write(myComDev.SerialCom,myComDev.stopbuff,11);
+            //check sum
+            unsigned char check_sum=0;
+            for(int i=0;i<10;i++)
+              check_sum+=miiboo_data.readbuff[i];
+            if(check_sum==miiboo_data.readbuff[10])
+            {
+                /*
+                printf("\nRX: ");
+                for(int i=0; i<10; ++i)
+                    printf("%02x", miiboo_data.readbuff[i]);
+                */
+                right =  miiboo_data.readbuff[3]*0x00010000;
+                right += miiboo_data.readbuff[4]*0x00000100;
+                right += miiboo_data.readbuff[5]*0x00000001;
+                if(!miiboo_data.readbuff[2])
+                    right *= -1;
+                left =  miiboo_data.readbuff[7]*0x00010000;
+                left += miiboo_data.readbuff[8]*0x00000100;
+                left += miiboo_data.readbuff[9]*0x00000001;
+                if(!miiboo_data.readbuff[6])
+                    left *= -1;
+                pthread_mutex_lock (&miiboo_data.rx_data_lock);
+                miiboo_data.left_distance = left;
+                miiboo_data.right_distance = right;
+                pthread_mutex_unlock (&miiboo_data.rx_data_lock);
+            }
         }
-
-        if(i>=50)
-            i=0;
-        else
-            i++;
-
-        usleep(10000); //delay 10ms
     }
-}
 
-void callback( float angular_temp, float linear_temp )
-{
-    //motor max vel limit
-    float linear_max_limit = myOdomCaculateData.cmd_vel_linear_max;
-    float angular_max_limit = myOdomCaculateData.cmd_vel_angular_max;
-    if(linear_temp>linear_max_limit)
-        linear_temp = linear_max_limit;
-    if(linear_temp<(-1*linear_max_limit))
-        linear_temp = -1*linear_max_limit;
-    if(angular_temp>angular_max_limit)
-        angular_temp = angular_max_limit;
-    if(angular_temp<(-1*angular_max_limit))
-        angular_temp = -1*angular_max_limit;
+    pthread_exit((void*) 0);
+} // void myreadframe_thread(void) 
 
-    int delta_encode_left_temp;
-    int delta_encode_right_temp;
-    delta_encode_left_temp = (linear_temp-0.5*(myOdomCaculateData.wheel_distance)*angular_temp)*(myOdomCaculateData.encode_sampling_time)/(myOdomCaculateData.speed_ratio);
-    delta_encode_right_temp = (linear_temp+0.5*(myOdomCaculateData.wheel_distance)*angular_temp)*(myOdomCaculateData.encode_sampling_time)/(myOdomCaculateData.speed_ratio);
- 
-    while(myComDev.send_update_flag!=0);//wait for flag clear
-    printf("[send to serial-com]delta_encode_left_target=%d delta_encode_right_target=%d\r\n",delta_encode_left_temp,delta_encode_right_temp);
-    //left motor enc set
-    if(delta_encode_left_temp>=0)
-        myComDev.writebuff[2] = 0x01;
-    else
-        myComDev.writebuff[2] = 0x00;
-    myComDev.writebuff[3] = abs(delta_encode_left_temp)>>16;
-    myComDev.writebuff[4] = (abs(delta_encode_left_temp)>>8)&0xff;
-    myComDev.writebuff[5] = abs(delta_encode_left_temp)&0xff;
-    //right motor enc set
-    if(delta_encode_right_temp>=0)
-        myComDev.writebuff[6] = 0x01;
-    else
-        myComDev.writebuff[6] = 0x00;
-    myComDev.writebuff[7] = abs(delta_encode_right_temp)>>16;
-    myComDev.writebuff[8] = (abs(delta_encode_right_temp)>>8)&0xff;
-    myComDev.writebuff[9] = abs(delta_encode_right_temp)&0xff;
-    //create checksum
-    myComDev.writebuff[10]=myComDev.writebuff[0]+myComDev.writebuff[1]+myComDev.writebuff[2]+myComDev.writebuff[3]+myComDev.writebuff[4]+
-                           myComDev.writebuff[5]+myComDev.writebuff[6]+myComDev.writebuff[7]+myComDev.writebuff[8]+myComDev.writebuff[9];
-    myComDev.send_update_flag=1; //set flag
-}
 
+
+
+// Testing the driver
 int main(int argc, char **argv)
 {
-  unsigned char com_port[] = "/dev/ttyUSB0";
-  unsigned char cmd_vel_topic[] = "cmd_vel";
-  unsigned char odom_pub_topic[] = "odom";
-  unsigned char wheel_left_speed_pub_topic[] = "wheel_left_speed";
-  unsigned char wheel_right_speed_pub_topic[] = "wheel_right_speed";
-  unsigned char odom_frame_id[] = "odom";
-  unsigned char odom_child_frame_id[] = "base_footprint";
-  
-  //get param from user launch
-  /*motor param set*/
-//  myOdomCaculateData.speed_ratio;
-//  myOdomCaculateData.wheel_distance;
-//  myOdomCaculateData.encode_sampling_time;
-  /*velocity limit*/
-//  myOdomCaculateData.cmd_vel_linear_max;
-//  myOdomCaculateData.cmd_vel_angular_max;
- 
-  //open deviece file of serial-com(such as /dev/ttyUSB*) 
-  ComSetup(com_port);
-  //create thread of serial-com read  
-  pthread_t id_1;
-  int ret1=pthread_create(&id_1,NULL,*myreadframe_thread,NULL);
-  //create thread of serial-com write  
-  pthread_t id_2;
-  int ret2=pthread_create(&id_2,NULL,*mywriteframe_thread,NULL);
+    unsigned char cmd[] = {'f', 'r', 'b', 'l', 's', 0};
+    char data[32];
 
-  while(1)
-  {
-    callback(0.0, 0.0);
-/*
-      if(myComDev.recv_update_flag==1)
-      {   
-            //odom_oriention trans to odom_quat
-            odom_quat = tf::createQuaternionMsgFromYaw(myOdomCaculateData.oriention);//yaw trans quat
+    // Verify command line
+    if( argc != 2 )
+    {
+        printf("\n\nCommand line\n\n");
+        printf("%s %s", argv[0], "/dev/ttyUSB?\n\n");
+        return -1;
+    }
 
-            //pub tf(odom->base_footprint)
-            odom_trans.header.stamp = ros::Time::now();
-            odom_trans.header.frame_id = odom_frame_id;     
-            odom_trans.child_frame_id = odom_child_frame_id;       
-            odom_trans.transform.translation.x = myOdomCaculateData.position_x;
-            odom_trans.transform.translation.y = myOdomCaculateData.position_y;
-            odom_trans.transform.translation.z = 0.0;
-            odom_trans.transform.rotation = odom_quat;        
-            //pub odom
-            odom.header.stamp = ros::Time::now(); 
-            odom.header.frame_id = odom_frame_id;
-            odom.child_frame_id = odom_child_frame_id;       
-            odom.pose.pose.position.x = myOdomCaculateData.position_x;     
-            odom.pose.pose.position.y = myOdomCaculateData.position_y;
-            odom.pose.pose.position.z = 0.0;
-            odom.pose.pose.orientation = odom_quat;       
-            odom.twist.twist.linear.x = myOdomCaculateData.velocity_linear;
-            odom.twist.twist.angular.z = myOdomCaculateData.velocity_angular;
-            //pub enc
-            wheel_left_speed_msg.data = (myBaseSensorData.delta_encode_left)*(myOdomCaculateData.speed_ratio)/(myOdomCaculateData.encode_sampling_time);
-            wheel_right_speed_msg.data = (myBaseSensorData.delta_encode_right)*(myOdomCaculateData.speed_ratio)/(myOdomCaculateData.encode_sampling_time);
-      }
-*/
-      usleep(100000);
-  }
+    // Instantiate driver on the heap
 
-  return 0;
-}
+    printf("\n\nInstantiating driver\n");
+    if( Open(argv[1]) )
+    {
+        printf("ERROR! opening");
+        goto done;
+    }
 
+    for(int index=0; cmd[index]; ++index)
+    {
+        for(int i=0; i<5; ++i)
+        {
+            if(Write((unsigned char *)&cmd[index]))
+            {
+                printf("ERROR! writing");
+                goto done;
+            }        
+            sleep(1);
+            if(Read(data))
+            {
+                printf("ERROR! reading");
+                goto done;
+            }
+            printf("%s", data);
+        }
+    }
+
+done:
+    Close();
+} // main()

@@ -39,4 +39,5 @@ clean:
 	rm *.so || true
 	rm *.a || true
 	rm test_so || true
+	rm test_class
 

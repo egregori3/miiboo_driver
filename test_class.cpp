@@ -20,6 +20,14 @@ int main(int argc, char **argv)
 
     printf("Insert your code here\n");
 
+#if 1
+    for(int i=0; i<15; ++i)
+    {
+        miiboo_object->move((unsigned char *)"mGG");
+        sleep(1);
+    }
+#endif
+#if 0    
     for(int i=0; i<15; ++i)
     {
         miiboo_object->move((unsigned char *)"f");
@@ -30,6 +38,9 @@ int main(int argc, char **argv)
         miiboo_object->move((unsigned char *)"f");
         sleep(1);
     }
+#endif
 
+    miiboo_object->move((unsigned char *)"s");
+ 
     delete miiboo_object;
 } // main()

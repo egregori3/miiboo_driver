@@ -191,7 +191,7 @@ void miiboo_driver::myreadframe_thread(void)
         {
             //debug:print recieved data 1byte by 1byte
             // printf("%02x\n",insert_buf);
-          
+#if 0          
             //FIFO queue cache
             for(int i=0;i<10;i++)
             {
@@ -213,6 +213,7 @@ void miiboo_driver::myreadframe_thread(void)
                         printf("%02x", readbuff[i]);
                 }
             }
+#endif
         }
 
         printf("Read thread shutdown\n");
@@ -229,10 +230,12 @@ void miiboo_driver::mywriteframe_thread(void)
         if(send_update_flag==1) //get flag
         {
             nwrite=write(SerialCom,(const void *)&writebuff,11);
+#if 0            
             //debug
             printf("\n TX:");
             for(int i=0; i<10; ++i)
                 printf("%02x,", writebuff[i]);
+#endif            
             send_update_flag=0; //clear flag
             i=0; //clear stop count
         }

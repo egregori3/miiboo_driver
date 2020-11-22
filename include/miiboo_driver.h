@@ -1,3 +1,4 @@
+// Written by Eric Gregori
 // Building the shared library
 // gcc -c -Wall -Werror -fpic miiboo_driver.c
 // gcc -shared -o libmiiboo.so miiboo_driver.o

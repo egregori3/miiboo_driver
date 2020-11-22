@@ -1,3 +1,6 @@
+// Written by Eric Gregori
+// A file for testing the shared library
+
 // Building the shared library
 // gcc -c -Wall -Werror -fpic miiboo_driver.c
 // gcc -shared -o libmiiboo.so miiboo_driver.o

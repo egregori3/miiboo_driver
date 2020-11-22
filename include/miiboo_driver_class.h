@@ -1,3 +1,4 @@
+// Written by Eric Gregori
 #include <iostream>
 #include <thread>
 //serial com

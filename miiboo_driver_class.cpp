@@ -1,5 +1,5 @@
 /******************************************************************
-
+// Written by Eric Gregori
 Based on the miiboo ROS driver from Hiram Zhang.
 https://files.cnblogs.com/files/hiram-zhang/miiboo_bringup.zip
 g++ miiboo_driver.cpp -lm -lpthread -std=c++11

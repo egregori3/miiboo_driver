@@ -85,7 +85,9 @@ miiboo_driver::~miiboo_driver()
 {
     printf("Desctructor\n");
     running = 0;
+    printf("Waiting for readthread\n");
     readThread.join();
+    printf("Waiting for write thread\n");
     writeThread.join();
     close(SerialCom);
 }
@@ -185,6 +187,8 @@ void miiboo_driver::myreadframe_thread(void)
                 }
             }
         }
+
+        printf("Read thread shutdown\n");
 } // void myreadframe_thread(void) 
 
 //thread: write motor control to serial-com
@@ -216,6 +220,8 @@ void miiboo_driver::mywriteframe_thread(void)
         ++i;
         usleep(10000); //delay 10ms
     }
+
+    printf("Write thread shutdown\n");
 }
 
 void miiboo_driver::write_to_motor(int32_t left, int32_t right)

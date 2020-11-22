@@ -106,8 +106,8 @@ void miiboo_driver::move(unsigned char *cmd)
         write_to_motor(0, 0);
     if(cmd[0] == 'm')
     {
-        int l;
-        int r;
+        int l = 0;
+        int r = 0;
 
         if( cmd[1] >= 'a' && cmd[1] <= 'z' )
         {

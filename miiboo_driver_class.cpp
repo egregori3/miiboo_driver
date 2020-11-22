@@ -102,6 +102,17 @@ void miiboo_driver::move(unsigned char *cmd)
         write_to_motor(-15, 15);
     if(cmd[0] == 's')
         write_to_motor(0, 0);
+    if(cmd[0] == 'm')
+    {
+        if(cmd[1] >= 'a' && cmd[2] >= 'a')
+        {
+            int l = 'a' - cmd[1];
+            int r = 'a' - cmd[2];
+
+            if( l<16 && r<16 )
+                write_to_motor(l, r);
+        }
+    }
 }
 
 // Open the comm port and configure for miiboo hardware communications

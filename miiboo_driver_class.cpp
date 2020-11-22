@@ -85,10 +85,10 @@ miiboo_driver::~miiboo_driver()
 {
     printf("Desctructor\n");
     running = 0;
-    printf("Waiting for readthread\n");
-    readThread.join();
     printf("Waiting for write thread\n");
     writeThread.join();
+    printf("Waiting for readthread\n");
+    readThread.join();
     close(SerialCom);
 }
 
@@ -221,6 +221,7 @@ void miiboo_driver::mywriteframe_thread(void)
         usleep(10000); //delay 10ms
     }
 
+    nwrite=write(SerialCom,(const void *)&stopbuff,11);
     printf("Write thread shutdown\n");
 }
 

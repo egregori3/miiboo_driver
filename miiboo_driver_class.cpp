@@ -46,6 +46,8 @@ char printf() one-by-one
 
 #include "miiboo_driver_class.h"
 
+#define MAX_SPEED   40
+
 // Constructor
 miiboo_driver::miiboo_driver(char *serialPort)
 {
@@ -92,16 +94,19 @@ miiboo_driver::~miiboo_driver()
     close(SerialCom);
 }
 
+// mlr
+// (0-127)   forward
+// (128-255) backward
 void miiboo_driver::move(unsigned char *cmd)
 {
     if(cmd[0] == 'f')
-        write_to_motor(15, 15);
+        write_to_motor(MAX_SPEED, MAX_SPEED);
     if(cmd[0] == 'b')
-        write_to_motor(-15, -15);
+        write_to_motor(-1*MAX_SPEED, -1*MAX_SPEED);
     if(cmd[0] == 'r')
-        write_to_motor(15, -15);
+        write_to_motor(MAX_SPEED/2, -1*MAX_SPEED/2);
     if(cmd[0] == 'l')
-        write_to_motor(-15, 15);
+        write_to_motor(-1*MAX_SPEED/2, MAX_SPEED/2);
     if(cmd[0] == 's')
         write_to_motor(0, 0);
     if(cmd[0] == 'm')
@@ -109,37 +114,31 @@ void miiboo_driver::move(unsigned char *cmd)
         int l = 0;
         int r = 0;
 
-        if( cmd[1] >= 'a' && cmd[1] <= 'z' )
+        if( cmd[1] >= 0 && cmd[1] <= 127 )
         {
-            l = cmd[1] - 'a';
-            if( l>=15 )
-                l = 0;
+            l = cmd[1];
         }
 
-        if( cmd[2] >= 'a' && cmd[2] <= 'z' )
+        if( cmd[2] >= 0 && cmd[2] <= 127 )
         {
-            r = cmd[2] - 'a';
-            if( r>=15 )
-                r = 0;
+            r = cmd[2];
         }
 
-        if( cmd[1] >= 'A' && cmd[1] <= 'Z' )
+        if( cmd[1] >= 128 && cmd[1] <= 255 )
         {
-            l = cmd[1] - 'A';
-            if( l>=15 )
-                l = 0;
+            l = cmd[1] - 128;
             l *= -1;
         }
 
-        if( cmd[2] >= 'A' && cmd[2] <= 'Z' )
+        if( cmd[2] >= 128 && cmd[2] <= 255 )
         {
-            r = cmd[2] - 'A';
-            if( r>=15 )
-                r = 0;
+            r = cmd[2] - 128;
             r *= -1;
         }
 
 
+        if( r > MAX_SPEED || r < (-1*MAX_SPEED)) r = 0;
+        if( l > MAX_SPEED || l < (-1*MAX_SPEED)) r = 0;
         write_to_motor(l, r);
     }
 }
